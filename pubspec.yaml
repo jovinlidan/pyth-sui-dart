@@ -8,7 +8,15 @@ environment:
 
 # Add regular dependencies here.
 dependencies:
-  # path: ^1.9.0
+  sui:
+    git:
+      url: https://github.com/jovinlidan/sui-dart.git
+      ref: feat/bump-sui-sdk
+  bcs:
+    git:
+      url: https://github.com/jovinlidan/bcs-dart.git
+      ref: feat/bump-bcs-sdk
+  price_service_client: ^1.0.0
 
 dev_dependencies:
   lints: ^6.0.0
