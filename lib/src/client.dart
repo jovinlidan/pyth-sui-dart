@@ -5,8 +5,6 @@ import 'package:sui/sui.dart';
 
 const int kMaxArgumentSize = 16 * 1024;
 
-typedef NestedTransactionResult = Map<String, dynamic>;
-
 class SuiPythClient {
   final SuiClient provider;
   final String pythStateId;
@@ -75,7 +73,7 @@ class SuiPythClient {
   }
 
   /// Verifies a single accumulator message and returns a hot-potato handle.
-  Future<NestedTransactionResult> verifyVaasAndGetHotPotato({
+  Future<TransactionResult> verifyVaasAndGetHotPotato({
     required Transaction tx,
     required List<Uint8List> updates,
     required String packageId,
@@ -102,7 +100,7 @@ class SuiPythClient {
       ],
     );
 
-    return res[0];
+    return res;
   }
 
   Future<List<String>> executePriceFeedUpdates({
@@ -116,7 +114,7 @@ class SuiPythClient {
     var coinId = 0;
 
     for (final feedId in feedIds) {
-      final priceInfoObjectId = await getPriceFeedString(feedId);
+      final priceInfoObjectId = await getPriceFeedObjectId(feedId);
       if (priceInfoObjectId == null) {
         throw StateError('Price feed $feedId not found, please create it first');
       }
@@ -235,7 +233,7 @@ class SuiPythClient {
   }
 
   /// Get the priceFeedObjectId for a given feedId if not already cached
-  Future<String?> getPriceFeedString(String feedId) async {
+  Future<String?> getPriceFeedObjectId(String feedId) async {
     final normalizedFeedId = feedId.replaceFirst('0x', '');
     if (!_priceFeedObjectIdCache.containsKey(normalizedFeedId)) {
       final info = await getPriceTableInfo();
