@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:bcs/index.dart';
-import 'package:sui/sui.dart';
+import 'package:bcs_dart/index.dart';
+import 'package:sui_dart/sui.dart';
 
 const int kMaxArgumentSize = 16 * 1024;
 
