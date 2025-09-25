@@ -55,9 +55,9 @@ class SuiPythClient {
   }
 
   /// Adds the commands for calling wormhole and verifying the vaas and returns the verified vaas.
-  Future<List<TransactionResult>> verifyVaas(List<Uint8List> vaas, Transaction tx) async {
+  Future<List<Map<String, Object>>> verifyVaas(List<Uint8List> vaas, Transaction tx) async {
     final wormholePackageId = await getWormholePackageId();
-    final verifiedVaas = <TransactionResult>[];
+    final verifiedVaas = <Map<String, Object>>[];
     for (final vaa in vaas) {
       final argBytes = Bcs.vector(
         Bcs.u8(),
