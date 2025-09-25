@@ -30,7 +30,7 @@ class SuiPythClient {
         throw StateError('Unable to fetch pyth state object');
       }
       final fields = content.fields;
-      _baseUpdateFee = (BigInt.from(fields['base_update_fee'] as num));
+      _baseUpdateFee = (BigInt.parse(fields['base_update_fee']));
     }
     return _baseUpdateFee!;
   }
