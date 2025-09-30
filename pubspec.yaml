@@ -1,6 +1,6 @@
 name: pyth_sui_dart
 description: A Dart SDK for pyth sui service.
-version: 1.0.1
+version: 1.0.2
 repository: https://github.com/jovinlidan/pyth-sui-dart
 
 environment:
