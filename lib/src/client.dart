@@ -9,11 +9,8 @@ import 'package:sui_dart/types/sui_bcs.dart' show StructTag;
 
 const int kMaxArgumentSize = 16 * 1024;
 
-/// Pyth Sui client (gRPC-backed).
-///
-/// On-chain reads use [SuiGrpcClient]. Sui's JSON-RPC API is deprecated;
-/// downstream callers should pass a gRPC client constructed against a
-/// fullnode that supports `sui.rpc.v2`.
+/// Pyth Sui client. On-chain reads use [SuiGrpcClient] (sui.rpc.v2);
+/// JSON-RPC is deprecated.
 class SuiPythClient {
   final SuiGrpcClient client;
   final String pythStateId;
@@ -106,10 +103,7 @@ class SuiPythClient {
     required dynamic priceUpdatesHotPotato,
     required TransactionResult coins,
   }) async {
-    // Resolve all feed -> price-info-object ids in parallel. Per-feed
-    // pagination would otherwise serialize cold-cache lookups; with the
-    // warm-field-map optimization in [getPriceFeedObjectId] each call
-    // pays for at most one `getObjects` round-trip.
+    // Parallel: each feed lookup is one `getObjects` round-trip.
     final priceInfoObjects = await Future.wait(
       feedIds.map((feedId) async {
         final id = await getPriceFeedObjectId(feedId);
@@ -220,23 +214,13 @@ class SuiPythClient {
     );
   }
 
-  /// Get the packageId for the wormhole package if not already cached
-  Future<String> getWormholePackageId() async {
-    _wormholePackageId ??= await getPackageId(wormholeStateId);
-    return _wormholePackageId!;
-  }
+  Future<String> getWormholePackageId() async =>
+      _wormholePackageId ??= await getPackageId(wormholeStateId);
 
-  /// Get the packageId for the pyth package if not already cached
-  Future<String> getPythPackageId() async {
-    _pythPackageId ??= await getPackageId(pythStateId);
-    return _pythPackageId!;
-  }
+  Future<String> getPythPackageId() async =>
+      _pythPackageId ??= await getPackageId(pythStateId);
 
-  /// Get the priceFeedObjectId for a given feedId. Cached after first lookup.
-  ///
-  /// Computes the dynamic-field UID directly via [deriveDynamicFieldId] and
-  /// fetches it with one `getObjects` round-trip. No pagination of the
-  /// price-info table.
+  /// priceFeedObjectId for `feedId`. Single `getObjects` via derived UID.
   Future<String?> getPriceFeedObjectId(String feedId) async {
     final normalizedFeedId = feedId.replaceFirst('0x', '');
     final cached = _priceFeedObjectIdCache[normalizedFeedId];
@@ -245,8 +229,8 @@ class SuiPythClient {
     final info = await getPriceTableInfo();
     final feedBytes = Uint8List.fromList(_hexToBytes(normalizedFeedId));
 
-    // BCS encoding of `PriceIdentifier { bytes: vector<u8> }`. Single-field
-    // struct serializes as just the inner field's bytes: ULEB128(len) + raw.
+    // PriceIdentifier{bytes: vector<u8>}: single-field struct flattens
+    // to the inner vector's BCS = ULEB128(len) + raw.
     final keyBcs = Bcs.struct('PriceIdentifier', {
       'bytes': Bcs.vector(Bcs.u8()),
     }).serialize({'bytes': feedBytes}).toBytes();
@@ -273,17 +257,13 @@ class SuiPythClient {
     return res;
   }
 
-  /// Fetches the price table object id for the current state id if not cached.
-  ///
-  /// The `b"price_info"` entry on the Pyth state is a `dynamic_object_field`
-  /// (the value Table is its own Object), so the wrapper's name type is
-  /// `0x2::dynamic_object_field::Wrapper<vector<u8>>`. We derive its UID,
-  /// fetch the wrapper, follow `value` to the actual Table object, then
-  /// parse `Table<PriceIdentifier, ID>` to extract the K type tag.
+  /// Resolves the price table id + its `K` (PriceIdentifier) type tag.
+  /// `b"price_info"` on the Pyth state is a `dynamic_object_field`, so we
+  /// derive the wrapper UID, follow `value` to the table, then read its
+  /// `Table<K, V>` type to get K.
   Future<({String id, String priceIdentifierType})> getPriceTableInfo() async {
     if (_priceTableInfo != null) return _priceTableInfo!;
 
-    // BCS-encode the field name (`vector<u8>` containing UTF-8 "price_info").
     final nameBcs = Bcs.vector(Bcs.u8()).serialize(utf8.encode('price_info')).toBytes();
 
     final wrapperFieldId = deriveDynamicFieldId(
@@ -297,7 +277,6 @@ class SuiPythClient {
       throw StateError('Price Table not found, contract may not be initialized');
     }
 
-    // Fetch the actual Table object so we can read its `Table<K, V>` type.
     final results = await client.getObjects([
       tableId,
     ], include: const grpc_types.ObjectIncludeOptions(json: true));
