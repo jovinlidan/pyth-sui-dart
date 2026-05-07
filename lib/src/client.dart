@@ -1,57 +1,53 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:bcs_dart/index.dart';
+import 'package:sui_dart/grpc/client.dart';
+import 'package:sui_dart/grpc/types.dart' as grpc_types;
 import 'package:sui_dart/sui.dart';
+import 'package:sui_dart/types/sui_bcs.dart' show StructTag;
 
 const int kMaxArgumentSize = 16 * 1024;
 
+/// Pyth Sui client (gRPC-backed).
+///
+/// On-chain reads use [SuiGrpcClient]. Sui's JSON-RPC API is deprecated;
+/// downstream callers should pass a gRPC client constructed against a
+/// fullnode that supports `sui.rpc.v2`.
 class SuiPythClient {
-  final SuiClient provider;
+  final SuiGrpcClient client;
   final String pythStateId;
   final String wormholeStateId;
 
   String? _pythPackageId;
   String? _wormholePackageId;
-  ({String id, String fieldType})? _priceTableInfo;
+  ({String id, String priceIdentifierType})? _priceTableInfo;
   final Map<String, String> _priceFeedObjectIdCache = {};
-  BigInt? _baseUpdateFee; // u64 fits in int
+  BigInt? _baseUpdateFee;
 
-  SuiPythClient({required this.provider, required this.pythStateId, required this.wormholeStateId});
+  SuiPythClient({required this.client, required this.pythStateId, required this.wormholeStateId});
 
   Future<BigInt> getBaseUpdateFee() async {
-    if (_baseUpdateFee == null) {
-      final result = await provider.getObject(
-        pythStateId,
-        options: SuiObjectDataOptions(showContent: true),
-      );
-      final data = result.data;
-      final content = data?.content;
-      if (content == null || content.dataType != 'moveObject') {
-        throw StateError('Unable to fetch pyth state object');
-      }
-      final fields = content.fields;
-      _baseUpdateFee = (BigInt.parse(fields['base_update_fee']));
+    if (_baseUpdateFee != null) return _baseUpdateFee!;
+    final fields = await _fetchObjectFields(pythStateId);
+    if (fields == null) {
+      throw StateError('Unable to fetch pyth state object');
     }
+    final raw = fields['base_update_fee'];
+    _baseUpdateFee = BigInt.parse(raw.toString());
     return _baseUpdateFee!;
   }
 
-  /// getPackageId returns the latest package id that the object belongs to. Use this to
-  /// fetch the latest package id for a given object id and handle package upgrades automatically.
+  /// Returns the latest package id for [objectId]. Walks the upgrade cap
+  /// so the latest published package is used after upgrades.
   Future<String> getPackageId(String objectId) async {
-    final result = await provider.getObject(
-      objectId,
-      options: SuiObjectDataOptions(showContent: true),
-    );
-    final content = result.data?.content;
-    if (content?.dataType == 'moveObject') {
-      final fields = content?.fields;
-      if (fields.containsKey('upgrade_cap')) {
-        final cap = fields['upgrade_cap'] as Map<String, dynamic>;
-        final capFields = cap['fields'] as Map<String, dynamic>;
-        return (capFields['package'] as String);
-      }
+    final fields = await _fetchObjectFields(objectId);
+    final upgradeCap = fields?['upgrade_cap'];
+    if (upgradeCap is Map<String, dynamic>) {
+      final pkg = upgradeCap['package'];
+      if (pkg is String && pkg.isNotEmpty) return pkg;
     }
-    throw StateError('Cannot fetch package id for object $String');
+    throw StateError('Cannot fetch package id for $objectId');
   }
 
   /// Adds the commands for calling wormhole and verifying the vaas and returns the verified vaas.
@@ -110,28 +106,32 @@ class SuiPythClient {
     required dynamic priceUpdatesHotPotato,
     required TransactionResult coins,
   }) async {
-    final priceInfoObjects = <String>[];
-    var coinId = 0;
+    // Resolve all feed -> price-info-object ids in parallel. Per-feed
+    // pagination would otherwise serialize cold-cache lookups; with the
+    // warm-field-map optimization in [getPriceFeedObjectId] each call
+    // pays for at most one `getObjects` round-trip.
+    final priceInfoObjects = await Future.wait(
+      feedIds.map((feedId) async {
+        final id = await getPriceFeedObjectId(feedId);
+        if (id == null) {
+          throw StateError('Price feed $feedId not found, please create it first');
+        }
+        return id;
+      }),
+    );
 
-    for (final feedId in feedIds) {
-      final priceInfoObjectId = await getPriceFeedObjectId(feedId);
-      if (priceInfoObjectId == null) {
-        throw StateError('Price feed $feedId not found, please create it first');
-      }
-      priceInfoObjects.add(priceInfoObjectId);
-
+    for (var coinId = 0; coinId < feedIds.length; coinId++) {
       final res = tx.moveCall(
         '$packageId::pyth::update_single_price_feed',
         arguments: [
           tx.object(pythStateId),
           priceUpdatesHotPotato,
-          tx.object(priceInfoObjectId),
+          tx.object(priceInfoObjects[coinId]),
           coins[coinId],
           tx.object(SUI_CLOCK_OBJECT_ID),
         ],
       );
       priceUpdatesHotPotato = res[0];
-      coinId++;
     }
 
     tx.moveCall(
@@ -232,48 +232,89 @@ class SuiPythClient {
     return _pythPackageId!;
   }
 
-  /// Get the priceFeedObjectId for a given feedId if not already cached
+  /// Get the priceFeedObjectId for a given feedId. Cached after first lookup.
+  ///
+  /// Computes the dynamic-field UID directly via [deriveDynamicFieldId] and
+  /// fetches it with one `getObjects` round-trip. No pagination of the
+  /// price-info table.
   Future<String?> getPriceFeedObjectId(String feedId) async {
     final normalizedFeedId = feedId.replaceFirst('0x', '');
-    if (!_priceFeedObjectIdCache.containsKey(normalizedFeedId)) {
-      final info = await getPriceTableInfo();
+    final cached = _priceFeedObjectIdCache[normalizedFeedId];
+    if (cached != null) return cached;
 
-      final result = await provider.getDynamicFieldObject(
-        info.id,
-        '${info.fieldType}::price_identifier::PriceIdentifier',
-        {'bytes': _hexToBytes(normalizedFeedId)},
-      );
+    final info = await getPriceTableInfo();
+    final feedBytes = Uint8List.fromList(_hexToBytes(normalizedFeedId));
 
-      final data = result.data;
-      final content = data?.content;
-      if (content == null) return null;
-      if (content.dataType != 'moveObject') {
-        throw StateError('Price feed type mismatch');
-      }
-      final fields = content.fields as Map<String, dynamic>;
-      final value = fields['value'] as String;
-      _priceFeedObjectIdCache[normalizedFeedId] = value;
-    }
-    return _priceFeedObjectIdCache[normalizedFeedId];
+    // BCS encoding of `PriceIdentifier { bytes: vector<u8> }`. Single-field
+    // struct serializes as just the inner field's bytes: ULEB128(len) + raw.
+    final keyBcs = Bcs.struct('PriceIdentifier', {
+      'bytes': Bcs.vector(Bcs.u8()),
+    }).serialize({'bytes': feedBytes}).toBytes();
+
+    final fieldId = deriveDynamicFieldId(
+      parentObjectId: info.id,
+      keyTypeTag: info.priceIdentifierType,
+      keyBcs: keyBcs,
+    );
+
+    final fields = await _fetchObjectFields(fieldId);
+    final value = fields?['value'];
+    if (value is! String || value.isEmpty) return null;
+    _priceFeedObjectIdCache[normalizedFeedId] = value;
+    return value;
   }
 
-  /// Fetches the price table object id for the current state id if not cached
-  Future<({String id, String fieldType})> getPriceTableInfo() async {
-    if (_priceTableInfo == null) {
-      final result = await provider.getDynamicFieldObject(pythStateId, 'vector<u8>', "price_info");
-
-      final data = result.data;
-      String? typeStr = data?.type;
-      final objectId = data?.objectId;
-      if (typeStr == null || objectId == null) {
-        throw StateError('Price Table not found, contract may not be initialized');
-      }
-
-      typeStr = typeStr.replaceFirst('0x2::table::Table<', '');
-      typeStr = typeStr.replaceFirst('::price_identifier::PriceIdentifier, 0x2::object::ID>', '');
-
-      _priceTableInfo = (id: objectId, fieldType: typeStr);
+  List<int> _hexToBytes(String hex) {
+    final clean = hex.replaceFirst('0x', '');
+    final res = <int>[];
+    for (var i = 0; i < clean.length; i += 2) {
+      res.add(int.parse(clean.substring(i, i + 2), radix: 16));
     }
+    return res;
+  }
+
+  /// Fetches the price table object id for the current state id if not cached.
+  ///
+  /// The `b"price_info"` entry on the Pyth state is a `dynamic_object_field`
+  /// (the value Table is its own Object), so the wrapper's name type is
+  /// `0x2::dynamic_object_field::Wrapper<vector<u8>>`. We derive its UID,
+  /// fetch the wrapper, follow `value` to the actual Table object, then
+  /// parse `Table<PriceIdentifier, ID>` to extract the K type tag.
+  Future<({String id, String priceIdentifierType})> getPriceTableInfo() async {
+    if (_priceTableInfo != null) return _priceTableInfo!;
+
+    // BCS-encode the field name (`vector<u8>` containing UTF-8 "price_info").
+    final nameBcs = Bcs.vector(Bcs.u8()).serialize(utf8.encode('price_info')).toBytes();
+
+    final wrapperFieldId = deriveDynamicFieldId(
+      parentObjectId: pythStateId,
+      keyTypeTag: '0x2::dynamic_object_field::Wrapper<vector<u8>>',
+      keyBcs: nameBcs,
+    );
+    final wrapperFields = await _fetchObjectFields(wrapperFieldId);
+    final tableId = wrapperFields?['value'];
+    if (tableId is! String || tableId.isEmpty) {
+      throw StateError('Price Table not found, contract may not be initialized');
+    }
+
+    // Fetch the actual Table object so we can read its `Table<K, V>` type.
+    final results = await client.getObjects([
+      tableId,
+    ], include: const grpc_types.ObjectIncludeOptions(json: true));
+    if (results.isEmpty || results.first is! grpc_types.ObjectSuccess) {
+      throw StateError('Price Table object $tableId not found');
+    }
+    final tableObj = (results.first as grpc_types.ObjectSuccess).data;
+    final tableTag = parseStructTag(tableObj.type);
+    if (tableTag.typeParams.isEmpty) {
+      throw StateError('Unexpected price-table type: ${tableObj.type}');
+    }
+    final keyTag = tableTag.typeParams.first;
+    final priceIdentifierType = keyTag is StructTag
+        ? normalizeStructTag(keyTag)
+        : keyTag.toString();
+
+    _priceTableInfo = (id: tableId, priceIdentifierType: priceIdentifierType);
     return _priceTableInfo!;
   }
 
@@ -294,24 +335,13 @@ class SuiPythClient {
     return Uint8List.sublistView(acc, vaaOffset, vaaOffset + vaaSize);
   }
 
-  List<int> _hexToBytes(String hex) {
-    final clean = (hex).replaceFirst('0x', '');
-    final res = <int>[];
-    for (var i = 0; i < clean.length; i += 2) {
-      res.add(int.parse(clean.substring(i, i + 2), radix: 16));
-    }
-    return res;
+  Future<Map<String, dynamic>?> _fetchObjectFields(String objectId) async {
+    final results = await client.getObjects([
+      objectId,
+    ], include: const grpc_types.ObjectIncludeOptions(json: true));
+    if (results.isEmpty) return null;
+    final first = results.first;
+    if (first is! grpc_types.ObjectSuccess) return null;
+    return first.data.json;
   }
-
-  // List<int> _uleb128(int value) {
-  //   final bytes = <int>[];
-  //   var v = value;
-  //   do {
-  //     var b = v & 0x7f;
-  //     v >>= 7;
-  //     if (v != 0) b |= 0x80;
-  //     bytes.add(b);
-  //   } while (v != 0);
-  //   return bytes;
-  // }
 }
