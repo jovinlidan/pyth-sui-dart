@@ -7,8 +7,7 @@ environment:
   sdk: ^3.9.0
 
 dependencies:
-  sui_dart:
-    path: ../../Scallop/sui-dart
+  sui_dart: ^0.4.0
   bcs_dart: ^0.1.2
   price_service_client: ^1.0.0
 
