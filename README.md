@@ -21,7 +21,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  pyth_sui_dart: ^1.0.1
+  pyth_sui_dart: ^2.0.1
 ```
 
 ## Quick Start
@@ -46,12 +46,13 @@ Future<List<Uint8List>> fetchUpdates() async {
 2. Prepare a Sui client and the Pyth client
 
 ```dart
-import 'package:sui_dart/sui.dart';
+import 'package:sui_dart/grpc/client.dart';
 import 'package:pyth_sui_dart/pyth_sui_dart.dart';
 
-final provider = SuiClient(
-  SuiClientOptions(
-    fullnode: 'https://fullnode.mainnet.sui.io', // or testnet/devnet endpoint
+final client = SuiGrpcClient(
+  SuiGrpcClientOptions(
+    baseUrl: 'fullnode.mainnet.sui.io', // or a testnet/devnet gRPC host
+    port: 443,
   ),
 );
 
@@ -60,7 +61,7 @@ const pythStateId = '<PYTH_STATE_OBJECT_ID>';
 const wormholeStateId = '<WORMHOLE_STATE_OBJECT_ID>';
 
 final pyth = SuiPythClient(
-  provider: provider,
+  client: client,
   pythStateId: pythStateId,
   wormholeStateId: wormholeStateId,
 );
@@ -87,7 +88,7 @@ Future<void> updateFeeds(List<String> feedIds, List<Uint8List> updates) async {
   );
 
   // Sign + execute per your wallet/integration
-  // Example (pseudocode): await provider.signAndExecute(tx, signer: ...);
+  // Example (pseudocode): await client.executeTransaction(tx, signer: ...);
 
   print('Updated Pyth price objects: $updatedObjectIds');
 }

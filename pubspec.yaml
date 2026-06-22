@@ -1,21 +1,16 @@
 name: pyth_sui_dart
-description: A Dart SDK for pyth sui service.
-version: 2.0.0
+description: A Dart SDK for fetching Pyth price updates from Hermes and building Sui transactions that verify Wormhole VAAs and update or create Pyth price feeds on-chain.
+version: 2.0.1
 repository: https://github.com/jovinlidan/pyth-sui-dart
 
 environment:
   sdk: ^3.9.0
 
 dependencies:
-  sui_dart: ^0.4.0
+  sui_dart: ^0.5.0
   bcs_dart: ^0.1.2
   price_service_client: ^1.0.0
 
 dev_dependencies:
   lints: ^6.0.0
   test: ^1.25.6
-
-dependency_overrides:
-  # sui_dart targets pointycastle ^4 but its transitive dep `bip39` declares
-  # ^3.0.0-nullsafety.2. Override to resolve in lock-step with sui_dart.
-  pointycastle: ^4.0.0

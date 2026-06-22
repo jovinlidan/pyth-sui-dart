@@ -22,7 +22,11 @@ class SuiPythClient {
   final Map<String, String> _priceFeedObjectIdCache = {};
   BigInt? _baseUpdateFee;
 
-  SuiPythClient({required this.client, required this.pythStateId, required this.wormholeStateId});
+  SuiPythClient({
+    required this.client,
+    required this.pythStateId,
+    required this.wormholeStateId,
+  });
 
   Future<BigInt> getBaseUpdateFee() async {
     if (_baseUpdateFee != null) return _baseUpdateFee!;
@@ -48,17 +52,27 @@ class SuiPythClient {
   }
 
   /// Adds the commands for calling wormhole and verifying the vaas and returns the verified vaas.
-  Future<List<Map<String, Object>>> verifyVaas(List<Uint8List> vaas, Transaction tx) async {
+  Future<List<Map<String, Object>>> verifyVaas(
+    List<Uint8List> vaas,
+    Transaction tx,
+  ) async {
     final wormholePackageId = await getWormholePackageId();
     final verifiedVaas = <Map<String, Object>>[];
     for (final vaa in vaas) {
-      final argBytes = Bcs.vector(
-        Bcs.u8(),
-      ).serialize(List.from(vaa), options: BcsWriterOptions(maxSize: kMaxArgumentSize)).toBytes();
+      final argBytes = Bcs.vector(Bcs.u8())
+          .serialize(
+            List.from(vaa),
+            options: BcsWriterOptions(maxSize: kMaxArgumentSize),
+          )
+          .toBytes();
 
       final res = tx.moveCall(
         '$wormholePackageId::vaa::parse_and_verify',
-        arguments: [tx.object(wormholeStateId), tx.pure(argBytes), tx.object(SUI_CLOCK_OBJECT_ID)],
+        arguments: [
+          tx.object(wormholeStateId),
+          tx.pure(argBytes),
+          tx.object(SUI_CLOCK_OBJECT_ID),
+        ],
       );
       verifiedVaas.add(res[0]);
     }
@@ -71,16 +85,19 @@ class SuiPythClient {
     required List<Uint8List> updates,
     required String packageId,
   }) async {
-    if (updates.length > 1) {
+    if (updates.length != 1) {
       throw ArgumentError(
-        'SDK does not support sending multiple accumulator messages in a single transaction',
+        'SDK requires exactly one accumulator message per transaction',
       );
     }
     final vaa = extractVaaBytesFromAccumulatorMessage(updates.first);
     final verifiedVaas = await verifyVaas([vaa], tx);
 
     final argBytes = Bcs.vector(Bcs.u8())
-        .serialize(List.from(updates.first), options: BcsWriterOptions(maxSize: kMaxArgumentSize))
+        .serialize(
+          List.from(updates.first),
+          options: BcsWriterOptions(maxSize: kMaxArgumentSize),
+        )
         .toBytes();
 
     final res = tx.moveCall(
@@ -108,7 +125,9 @@ class SuiPythClient {
       feedIds.map((feedId) async {
         final id = await getPriceFeedObjectId(feedId);
         if (id == null) {
-          throw StateError('Price feed $feedId not found, please create it first');
+          throw StateError(
+            'Price feed $feedId not found, please create it first',
+          );
         }
         return id;
       }),
@@ -190,18 +209,24 @@ class SuiPythClient {
     );
   }
 
-  Future<void> createPriceFeed({required Transaction tx, required List<Uint8List> updates}) async {
+  Future<void> createPriceFeed({
+    required Transaction tx,
+    required List<Uint8List> updates,
+  }) async {
     final packageId = await getPythPackageId();
-    if (updates.length > 1) {
+    if (updates.length != 1) {
       throw ArgumentError(
-        'SDK does not support sending multiple accumulator messages in a single transaction',
+        'SDK requires exactly one accumulator message per transaction',
       );
     }
     final vaa = extractVaaBytesFromAccumulatorMessage(updates.first);
     final verified = await verifyVaas([vaa], tx);
 
     final argBytes = Bcs.vector(Bcs.u8())
-        .serialize(List.from(updates.first), options: BcsWriterOptions(maxSize: kMaxArgumentSize))
+        .serialize(
+          List.from(updates.first),
+          options: BcsWriterOptions(maxSize: kMaxArgumentSize),
+        )
         .toBytes();
     tx.moveCall(
       '$packageId::pyth::create_price_feeds_using_accumulator',
@@ -250,6 +275,11 @@ class SuiPythClient {
 
   List<int> _hexToBytes(String hex) {
     final clean = hex.replaceFirst('0x', '');
+    if (clean.length.isOdd) {
+      throw ArgumentError(
+        'feedId hex must have an even number of digits: $hex',
+      );
+    }
     final res = <int>[];
     for (var i = 0; i < clean.length; i += 2) {
       res.add(int.parse(clean.substring(i, i + 2), radix: 16));
@@ -264,7 +294,9 @@ class SuiPythClient {
   Future<({String id, String priceIdentifierType})> getPriceTableInfo() async {
     if (_priceTableInfo != null) return _priceTableInfo!;
 
-    final nameBcs = Bcs.vector(Bcs.u8()).serialize(utf8.encode('price_info')).toBytes();
+    final nameBcs = Bcs.vector(
+      Bcs.u8(),
+    ).serialize(utf8.encode('price_info')).toBytes();
 
     final wrapperFieldId = deriveDynamicFieldId(
       parentObjectId: pythStateId,
@@ -274,7 +306,9 @@ class SuiPythClient {
     final wrapperFields = await _fetchObjectFields(wrapperFieldId);
     final tableId = wrapperFields?['value'];
     if (tableId is! String || tableId.isEmpty) {
-      throw StateError('Price Table not found, contract may not be initialized');
+      throw StateError(
+        'Price Table not found, contract may not be initialized',
+      );
     }
 
     final results = await client.getObjects([

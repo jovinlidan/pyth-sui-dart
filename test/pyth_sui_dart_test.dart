@@ -33,11 +33,14 @@ void main() {
   // host can reach `fullnode.mainnet.sui.io:443`.
   group('Integration: SuiPythClient (mainnet, read-only)', () {
     // Mainnet Pyth + Wormhole state object ids.
-    const pythStateId = '0x1f9310238ee9298fb703c3419030b35b22bb1cc37113e3bb5007c99aec79e5b8';
-    const wormholeStateId = '0xaeab97f96cf9877fee2883315d459552b2b921edc16d7ceac6eab944dd88919c';
+    const pythStateId =
+        '0x1f9310238ee9298fb703c3419030b35b22bb1cc37113e3bb5007c99aec79e5b8';
+    const wormholeStateId =
+        '0xaeab97f96cf9877fee2883315d459552b2b921edc16d7ceac6eab944dd88919c';
 
     // Well-known Pyth price feed: SUI/USD.
-    const suiUsdFeedId = '0x23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744';
+    const suiUsdFeedId =
+        '0x23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744';
 
     late SuiPythClient pyth;
 
@@ -70,17 +73,26 @@ void main() {
       expect(pkg.length, greaterThan(2));
     });
 
-    test('getPriceTableInfo resolves table id + PriceIdentifier type', () async {
-      final info = await pyth.getPriceTableInfo();
-      expect(info.id, startsWith('0x'));
-      expect(info.priceIdentifierType, contains('::price_identifier::PriceIdentifier'));
-    });
+    test(
+      'getPriceTableInfo resolves table id + PriceIdentifier type',
+      () async {
+        final info = await pyth.getPriceTableInfo();
+        expect(info.id, startsWith('0x'));
+        expect(
+          info.priceIdentifierType,
+          contains('::price_identifier::PriceIdentifier'),
+        );
+      },
+    );
 
-    test('getPriceFeedObjectId resolves SUI/USD via deterministic UID', () async {
-      final id = await pyth.getPriceFeedObjectId(suiUsdFeedId);
-      expect(id, isNotNull);
-      expect(id!, startsWith('0x'));
-    });
+    test(
+      'getPriceFeedObjectId resolves SUI/USD via deterministic UID',
+      () async {
+        final id = await pyth.getPriceFeedObjectId(suiUsdFeedId);
+        expect(id, isNotNull);
+        expect(id!, startsWith('0x'));
+      },
+    );
 
     test('getPriceFeedObjectId is cached on second call (no RPC)', () async {
       final id1 = await pyth.getPriceFeedObjectId(suiUsdFeedId);
@@ -95,7 +107,8 @@ void main() {
 
     test('getPriceFeedObjectId returns null for an unknown feed', () async {
       // Random 32-byte hex that's almost certainly not a registered feed.
-      const bogus = '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+      const bogus =
+          '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
       final id = await pyth.getPriceFeedObjectId(bogus);
       expect(id, isNull);
     });
