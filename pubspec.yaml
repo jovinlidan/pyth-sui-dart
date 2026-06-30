@@ -1,15 +1,16 @@
 name: pyth_sui_dart
 description: A Dart SDK for fetching Pyth price updates from Hermes and building Sui transactions that verify Wormhole VAAs and update or create Pyth price feeds on-chain.
-version: 2.0.1
+version: 3.0.0
 repository: https://github.com/jovinlidan/pyth-sui-dart
 
 environment:
   sdk: ^3.9.0
 
 dependencies:
-  sui_dart: ^0.5.0
-  bcs_dart: ^0.1.2
-  price_service_client: ^1.0.0
+  sui_dart: ^0.8.1
+  bcs_dart: ^0.2.0
+  http: ^1.5.0
+  decimal: ^3.2.4
 
 dev_dependencies:
   lints: ^6.0.0

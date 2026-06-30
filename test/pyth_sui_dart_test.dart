@@ -3,21 +3,55 @@ import 'package:sui_dart/grpc/client.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('Integration: SuiPriceServiceConnection', () {
+  group('Integration: SuiPriceServiceConnection (Hermes, mainnet)', () {
     late SuiPriceServiceConnection conn;
+
+    // Well-known mainnet feeds.
+    const suiUsd =
+        '0x23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744';
+    const usdcUsd =
+        '0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a';
 
     setUp(() {
       conn = SuiPriceServiceConnection('https://hermes.pyth.network');
     });
 
-    test('fetches latest VAA update data', () async {
-      final ids = await conn.getPriceFeedIds();
-      expect(ids, isNotEmpty);
+    test(
+      'getPriceFeedsUpdateData bundles feeds into one accumulator message',
+      () async {
+        final updates = await conn.getPriceFeedsUpdateData([suiUsd, usdcUsd]);
+        // Hermes returns a single accumulator update bundling every feed.
+        expect(updates, hasLength(1));
+        // PNAU magic header (0x504e4155).
+        expect(updates.first.sublist(0, 4), [0x50, 0x4e, 0x41, 0x55]);
 
-      final updates = await conn.getPriceFeedsUpdateData([ids.first]);
-      expect(updates, isNotEmpty);
+        // The embedded Wormhole VAA must parse — this is the byte format the
+        // on-chain update path consumes. (extract is pure; no RPC.)
+        final pyth = SuiPythClient(
+          client: SuiGrpcClient(
+            SuiGrpcClientOptions(baseUrl: 'fullnode.mainnet.sui.io', port: 443),
+          ),
+          pythStateId: '0x0',
+          wormholeStateId: '0x0',
+        );
+        final vaa = pyth.extractVaaBytesFromAccumulatorMessage(updates.first);
+        expect(vaa.lengthInBytes, greaterThan(0));
+      },
+    );
 
-      expect(updates.first.lengthInBytes, greaterThan(0));
+    test('getLatestPriceFeeds returns prices at full precision', () async {
+      final feeds = await conn.getLatestPriceFeeds([suiUsd]);
+      expect(feeds, isNotNull);
+      expect(feeds!, hasLength(1));
+      final feed = feeds.first;
+      // Hermes returns ids without the `0x` prefix.
+      expect(suiUsd.toLowerCase(), contains(feed.id.toLowerCase()));
+      final price = feed.getPriceUnchecked().priceAsDecimal.toDouble();
+      expect(price, greaterThan(0));
+    });
+
+    test('getLatestPriceFeeds returns [] for no ids', () async {
+      expect(await conn.getLatestPriceFeeds([]), isEmpty);
     });
   });
 

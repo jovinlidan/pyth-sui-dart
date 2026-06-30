@@ -1,3 +1,15 @@
+## 3.0.0
+
+### Breaking
+
+- `SuiPriceServiceConnection` fetches from Hermes (`/v2/updates/price/latest`) directly and no longer extends `price_service_client`'s `PriceServiceConnection`; the inherited methods (`getLatestVaas`, `getVaa`, `getPriceFeed`, `getPriceFeedIds`, websocket subscriptions) are gone. `getPriceFeedsUpdateData` and `getLatestPriceFeeds` keep their signatures.
+- `Price`, `PriceFeed`, and `PriceServiceConnectionConfig` are now defined and exported by this package instead of re-used from `price_service_client`.
+
+### Changed
+
+- Drop the `price_service_client` dependency; add `http` and `decimal`.
+- Bump `sui_dart` to `^0.8.1` and `bcs_dart` to `^0.2.0`.
+
 ## 2.0.1
 
 - Widen the `sui_dart` constraint to `^0.5.0`.
