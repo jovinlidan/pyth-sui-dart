@@ -1,3 +1,9 @@
+## 3.0.1
+
+### Changed
+
+- Bump `bcs_dart` to `^0.2.1`.
+
 ## 3.0.0
 
 ### Breaking
