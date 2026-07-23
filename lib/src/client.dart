@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:bcs_dart/index.dart';
-import 'package:sui_dart/grpc/client.dart';
+import 'package:sui_dart/grpc/sui_grpc_client.dart';
 import 'package:sui_dart/grpc/types.dart' as grpc_types;
 import 'package:sui_dart/sui.dart';
 import 'package:sui_dart/types/sui_bcs.dart' show StructTag;

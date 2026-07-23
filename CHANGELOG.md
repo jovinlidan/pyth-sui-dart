@@ -1,3 +1,11 @@
+## 4.0.0
+
+### Breaking
+
+- Require `sui_dart` `^0.9.0`. Its transport refactor removed the JSON-RPC
+  surface and renamed client methods, so consumers on `sui_dart` 0.8.x must
+  migrate. `pyth_sui_dart`'s own API is unchanged.
+
 ## 3.0.1
 
 ### Changed
