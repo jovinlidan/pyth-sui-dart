@@ -1,3 +1,16 @@
+## 4.1.0
+
+### Changed
+
+- Require `sui_dart` `^0.10.0`. Consumers on 0.9.x must upgrade alongside.
+  `pyth_sui_dart`'s own API is unchanged; nothing here touches the APIs 0.10.0
+  changed.
+
+### Fixed
+
+- The example imported `package:sui_dart/grpc/client.dart`, a path removed in
+  `sui_dart` 0.9.0, so it had not analyzed since.
+
 ## 4.0.0
 
 ### Breaking

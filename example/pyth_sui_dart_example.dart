@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:pyth_sui_dart/pyth_sui_dart.dart';
-import 'package:sui_dart/grpc/client.dart';
+import 'package:sui_dart/grpc/sui_grpc_client.dart';
 import 'package:sui_dart/sui.dart';
 
 const pythStateId =
