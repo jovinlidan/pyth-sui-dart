@@ -1,3 +1,9 @@
+## 4.2.0
+
+### Changed
+
+- Require `sui_dart` `^0.11.0`.
+
 ## 4.1.0
 
 ### Changed
