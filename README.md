@@ -21,7 +21,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  pyth_sui_dart: ^2.0.1
+  pyth_sui_dart: ^4.3.0
 ```
 
 ## Quick Start
